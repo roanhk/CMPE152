@@ -1,6 +1,7 @@
 # lexer.py
 
 from tokens import Token, TokenType, KEYWORDS, OPERATORS, DELIMITERS
+from errors import LexicalError
 
 
 class LexicalAnalyzer:
@@ -22,7 +23,9 @@ class LexicalAnalyzer:
         # Emit remaining DEDENTs at end of file
         while len(self.indent_stack) > 1:
             self.indent_stack.pop()
-            self.tokens.append(Token(TokenType.DEDENT, "<DEDENT>", len(lines) + 1, 1))
+            self.tokens.append(
+                Token(TokenType.DEDENT, "<DEDENT>", len(lines) + 1, 1)
+            )
 
         self.tokens.append(Token(TokenType.EOF, "<EOF>", len(lines) + 1, 1))
         return self.tokens, self.errors
@@ -58,7 +61,7 @@ class LexicalAnalyzer:
             # String literal
             if ch == '"' or ch == "'":
                 token, new_index = self._read_string(raw_line, line_number, i)
-                if token:
+                if token is not None:
                     self.tokens.append(token)
                 i = new_index
                 continue
@@ -73,7 +76,8 @@ class LexicalAnalyzer:
             # Number literal
             if ch.isdigit():
                 token, new_index = self._read_number(raw_line, line_number, i)
-                self.tokens.append(token)
+                if token is not None:
+                    self.tokens.append(token)
                 i = new_index
                 continue
 
@@ -105,15 +109,13 @@ class LexicalAnalyzer:
                 continue
 
             # Invalid character
-            self.errors.append({
-                "line": line_number,
-                "column": column,
-                "message": f"Invalid character '{ch}'"
-            })
+            self._add_error(f"Invalid character '{ch}'", line_number, column)
             i += 1
 
         # Add NEWLINE token at the end of a meaningful line
-        self.tokens.append(Token(TokenType.NEWLINE, "<NEWLINE>", line_number, len(raw_line) + 1))
+        self.tokens.append(
+            Token(TokenType.NEWLINE, "<NEWLINE>", line_number, len(raw_line) + 1)
+        )
 
     def _count_indent(self, line: str) -> int:
         count = 0
@@ -139,11 +141,7 @@ class LexicalAnalyzer:
                 self.tokens.append(Token(TokenType.DEDENT, "<DEDENT>", line_number, 1))
 
             if self.indent_stack[-1] != indent_width:
-                self.errors.append({
-                    "line": line_number,
-                    "column": 1,
-                    "message": "Invalid indentation level"
-                })
+                self._add_error("Invalid indentation level", line_number, 1)
 
     def _read_identifier_or_keyword(self, line: str, line_number: int, start: int):
         i = start
@@ -171,12 +169,8 @@ class LexicalAnalyzer:
 
         # Reject malformed float like "12."
         if value.endswith("."):
-            self.errors.append({
-                "line": line_number,
-                "column": start + 1,
-                "message": f"Malformed number '{value}'"
-            })
-            return Token(TokenType.FLOAT, value, line_number, start + 1), i
+            self._add_error(f"Malformed number '{value}'", line_number, start + 1)
+            return None, i
 
         token_type = TokenType.FLOAT if has_dot else TokenType.INTEGER
         return Token(token_type, value, line_number, start + 1), i
@@ -203,11 +197,7 @@ class LexicalAnalyzer:
             value_chars.append(ch)
             i += 1
 
-        self.errors.append({
-            "line": line_number,
-            "column": start + 1,
-            "message": "Unterminated string literal"
-        })
+        self._add_error("Unterminated string literal", line_number, start + 1)
         return None, len(line)
 
     def _match_operator(self, line: str, index: int):
@@ -215,3 +205,6 @@ class LexicalAnalyzer:
             if line.startswith(op, index):
                 return op
         return None
+
+    def _add_error(self, message, line, column):
+        self.errors.append(LexicalError(message, line=line, column=column).to_dict())
