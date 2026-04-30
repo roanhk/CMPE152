@@ -10,7 +10,7 @@ from lexer import LexicalAnalyzer
 try:
     from syntax_analyzer import Parser
 except ImportError:
-    from parser import Parser
+    from ast import Parser
 
 from semantic_analyzer import SemanticAnalyzer
 from optimizer import CodeOptimizer
